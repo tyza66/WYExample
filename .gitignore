@@ -1,0 +1,40 @@
+# ---- Java / Maven ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+*.log
+hs_err_pid*
+
+# ---- Node / Vite ----
+node_modules/
+dist/
+dist-ssr/
+.vite/
+.pnpm-store/
+*.local
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+!.vscode/extensions.json
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- 本地数据与配置 ----
+*.db
+*.mv.db
+*.trace.db
+data/
+.env
+.env.local
+application-local.yml

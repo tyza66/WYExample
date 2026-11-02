@@ -1,0 +1,232 @@
+// WYE 数据模型（SQLite + Prisma）
+// 表名统一 wye_ 前缀，字段用 snake_case；金额字段用 Decimal，禁止用浮点累加。
+// 详细字段说明见 docs/data-model.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 单据号序列（账单号 / 收款单号），保证并发下不重号
+model Sequence {
+  key   String @id
+  value Int    @default(0)
+
+  @@map("wye_sequence")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  realName  String   @map("real_name")
+  role      String
+  phone     String?
+  enabled   Boolean  @default(true)
+  remark    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("wye_user")
+}
+
+model Community {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  address   String?
+  manager   String?
+  phone     String?
+  remark    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  buildings Building[]
+  rooms     Room[]
+
+  @@map("wye_community")
+}
+
+model Building {
+  id          Int      @id @default(autoincrement())
+  communityId Int      @map("community_id")
+  name        String
+  unitCount   Int      @default(1) @map("unit_count")
+  remark      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  community Community @relation(fields: [communityId], references: [id])
+  rooms     Room[]
+
+  @@map("wye_building")
+}
+
+model Room {
+  id          Int      @id @default(autoincrement())
+  communityId Int      @map("community_id")
+  buildingId  Int      @map("building_id")
+  unit        String?
+  roomNo      String   @map("room_no")
+  floor       Int?
+  area        Decimal?
+  roomType    String   @map("room_type")
+  status      String
+  remark      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  community     Community      @relation(fields: [communityId], references: [id])
+  building      Building       @relation(fields: [buildingId], references: [id])
+  residents     Resident[]
+  bills         Bill[]
+  payments      Payment[]
+  meterReadings MeterReading[]
+
+  @@index([communityId, buildingId])
+  @@map("wye_room")
+}
+
+model Resident {
+  id           Int       @id @default(autoincrement())
+  roomId       Int       @map("room_id")
+  name         String
+  phone        String?
+  idCard       String?   @map("id_card")
+  residentType String    @map("resident_type")
+  startDate    DateTime? @map("start_date")
+  endDate      DateTime? @map("end_date")
+  status       String
+  remark       String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@index([roomId])
+  @@map("wye_resident")
+}
+
+model FeeItem {
+  id          Int      @id @default(autoincrement())
+  name        String
+  code        String   @unique
+  type        String
+  chargeMode  String   @map("charge_mode")
+  unitPrice   Decimal  @map("unit_price")
+  priceUnit   String?  @map("price_unit")
+  period      String
+  communityId Int?     @map("community_id")
+  enabled     Boolean  @default(true)
+  sortNo      Int      @default(0) @map("sort_no")
+  remark      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  bills         Bill[]
+  meterReadings MeterReading[]
+
+  @@map("wye_fee_item")
+}
+
+model Bill {
+  id          Int       @id @default(autoincrement())
+  billNo      String    @unique @map("bill_no")
+  communityId Int       @map("community_id")
+  roomId      Int       @map("room_id")
+  feeItemId   Int       @map("fee_item_id")
+  period      String
+  chargeMode  String    @map("charge_mode")
+  quantity    Decimal
+  unitPrice   Decimal   @map("unit_price")
+  amount      Decimal
+  discount    Decimal   @default(0)
+  paidAmount  Decimal   @default(0) @map("paid_amount")
+  status      String
+  dueDate     DateTime? @map("due_date")
+  generatedAt DateTime? @map("generated_at")
+  remark      String?
+  voidReason  String?   @map("void_reason")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  room        Room                @relation(fields: [roomId], references: [id])
+  feeItem     FeeItem             @relation(fields: [feeItemId], references: [id])
+  allocations PaymentAllocation[]
+
+  @@index([period, status])
+  @@index([roomId, period])
+  @@map("wye_bill")
+}
+
+model Payment {
+  id          Int      @id @default(autoincrement())
+  paymentNo   String   @unique @map("payment_no")
+  communityId Int      @map("community_id")
+  roomId      Int      @map("room_id")
+  amount      Decimal
+  method      String
+  paidAt      DateTime @map("paid_at")
+  operator    String
+  remark      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  room        Room                @relation(fields: [roomId], references: [id])
+  allocations PaymentAllocation[]
+
+  @@index([paidAt])
+  @@map("wye_payment")
+}
+
+model PaymentAllocation {
+  id        Int      @id @default(autoincrement())
+  paymentId Int      @map("payment_id")
+  billId    Int      @map("bill_id")
+  amount    Decimal
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+  bill    Bill    @relation(fields: [billId], references: [id])
+
+  @@map("wye_payment_allocation")
+}
+
+model MeterReading {
+  id          Int       @id @default(autoincrement())
+  roomId      Int       @map("room_id")
+  feeItemId   Int       @map("fee_item_id")
+  period      String
+  prevReading Decimal   @map("prev_reading")
+  currReading Decimal   @map("curr_reading")
+  usageQty    Decimal   @map("usage_qty")
+  readingDate DateTime? @map("reading_date")
+  operator    String?
+  remark      String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  room    Room    @relation(fields: [roomId], references: [id])
+  feeItem FeeItem @relation(fields: [feeItemId], references: [id])
+
+  @@unique([roomId, feeItemId, period])
+  @@map("wye_meter_reading")
+}
+
+model OperationLog {
+  id        Int      @id @default(autoincrement())
+  username  String
+  module    String
+  action    String
+  target    String?
+  detail    String?
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("wye_operation_log")
+}

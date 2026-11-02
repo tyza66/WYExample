@@ -1,0 +1,29 @@
+{
+  "name": "wye",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WYE 开源物业收费管理系统：一条命令启动全栈",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "pnpm install && pnpm --dir wye-server install && pnpm --dir wye-frontend install && pnpm run db:setup",
+    "db:setup": "pnpm --dir wye-server db:push && pnpm --dir wye-server db:seed",
+    "db:reset": "pnpm --dir wye-server db:push && pnpm --dir wye-server db:seed",
+    "dev": "concurrently -n server,web -c cyan,magenta \"pnpm --dir wye-server dev\" \"pnpm --dir wye-frontend dev\"",
+    "dev:server": "pnpm --dir wye-server dev",
+    "dev:web": "pnpm --dir wye-frontend dev",
+    "build": "pnpm --dir wye-frontend build",
+    "start": "pnpm --dir wye-server start",
+    "preview": "pnpm run build && pnpm run start",
+    "demo:build": "cd wye-frontend && VITE_DEMO_MODE=true pnpm build",
+    "docker:build": "docker build -t wye:latest .",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f wye"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

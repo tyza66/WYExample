@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+wye-server/data
+.pnpm-store
+**/.pnpm-store
+docs
+*.md
+!README.md
+.env
+.env.local
+*.log
+.DS_Store

@@ -1,0 +1,38 @@
+# WYE 一站式启动：一个容器同时提供 API 与前端页面
+#   docker compose up -d          然后打开 http://localhost:8080
+#   docker compose logs -f wye    查看日志
+#   docker compose down           停止（数据保留在 wye-data 卷里）
+services:
+  wye:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wye:latest
+    container_name: wye
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      HOST: 0.0.0.0
+      # 生产环境请务必改成随机长字符串，或写在同目录的 .env 文件里
+      WYE_JWT_SECRET: ${WYE_JWT_SECRET:-change-me-in-production}
+      # 首次启动自动灌演示数据；正式使用改为 false
+      WYE_SEED: ${WYE_SEED:-true}
+      # 启动时自动建表（SQLite 文件在卷里，首次启动需要建）
+      WYE_AUTO_MIGRATE: "true"
+      # 由 Node 进程直接托管前端产物
+      WYE_WEB_DIST: /app/web
+      TZ: Asia/Shanghai
+    volumes:
+      # SQLite 数据持久化：删掉这个卷等于清空所有数据
+      - wye-data:/app/wye-server/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+volumes:
+  wye-data:

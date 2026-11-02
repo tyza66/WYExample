@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  server:
+    name: 后端语法与服务自检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装依赖
+        working-directory: wye-server
+        run: pnpm install --no-frozen-lockfile
+
+      - name: 语法自检
+        working-directory: wye-server
+        run: |
+          for f in $(find src prisma -name "*.js"); do node --check "$f"; done
+
+      - name: 建库 + 灌演示数据 + 启动自检
+        working-directory: wye-server
+        run: |
+          pnpm db:push
+          pnpm db:seed
+          node src/server.js &
+          for i in $(seq 1 30); do
+            sleep 2
+            if curl -fsS http://127.0.0.1:8080/api/health; then echo "健康检查通过"; exit 0; fi
+          done
+          echo "服务在 60 秒内未就绪"; exit 1
+
+  web:
+    name: 前端构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: wye-frontend/pnpm-lock.yaml
+
+      - name: 安装依赖
+        working-directory: wye-frontend
+        run: pnpm install --no-frozen-lockfile
+
+      - name: 构建前端
+        working-directory: wye-frontend
+        run: pnpm build
+
+      - name: 构建在线 Demo 版（Netlify 用）
+        working-directory: wye-frontend
+        run: VITE_DEMO_MODE=true pnpm build

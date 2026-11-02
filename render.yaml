@@ -1,0 +1,28 @@
+# Render 一键部署（Blueprint）
+# 使用方式：在 Render 控制台选择 "New +" -> "Blueprint"，指向本仓库即可。
+# 注意：SQLite 必须挂持久磁盘，否则每次重新部署数据都会丢。
+services:
+  - type: web
+    name: wye
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # 持久磁盘需要付费实例类型，免费实例无法挂盘（数据会在重启后丢失）
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: WYE_JWT_SECRET
+        generateValue: true
+      - key: WYE_SEED
+        value: "true"
+      - key: WYE_AUTO_MIGRATE
+        value: "true"
+      - key: WYE_WEB_DIST
+        value: /app/web
+      - key: TZ
+        value: Asia/Shanghai
+    disk:
+      name: wye-data
+      mountPath: /app/wye-server/data
+      sizeGB: 1

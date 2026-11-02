@@ -1,0 +1,23 @@
+# Netlify 静态在线 Demo：前端以内置 mock 数据运行，不需要后端
+# 用途：给不会部署的人一个"点开就能点"的演示站
+[build]
+  base = "wye-frontend"
+  command = "pnpm install --no-frozen-lockfile && pnpm build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # 打开后前端所有 /api 请求由内置 mock 处理（见 wye-frontend/src/mock/index.js）
+  VITE_DEMO_MODE = "true"
+
+# 单页应用回退
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
