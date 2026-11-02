@@ -21,7 +21,10 @@
     "docker:build": "docker build -t wye:latest .",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f wye"
+    "docker:logs": "docker compose logs -f wye",
+    "docker:mysql": "docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build",
+    "docker:pg": "docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build",
+    "db:switch": "node scripts/switch-db.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

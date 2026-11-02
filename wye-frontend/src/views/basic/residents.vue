@@ -7,10 +7,12 @@ import { roomOptions } from '@/api/room'
 import { useUserStore } from '@/stores/user'
 import { dictLabel, dictOptions, dictTag } from '@/utils/dict'
 import { formatDate, today } from '@/utils/format'
+import { exportBackend } from '@/utils/export'
 
 const userStore = useUserStore()
 
 const loading = ref(false)
+const exporting = ref(false)
 const submitting = ref(false)
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增住户')
@@ -239,6 +241,19 @@ async function handleDelete(row) {
   }
 }
 
+/** 导出当前筛选条件下的住户（后端 CSV，/api/export/residents） */
+async function handleExport() {
+  exporting.value = true
+  try {
+    await exportBackend('residents', { ...query, page: undefined, size: undefined }, '住户')
+    ElMessage.success('已开始下载住户 CSV')
+  } catch (e) {
+    // 提示已由拦截器处理
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(async () => {
   await loadCommunities()
   await loadData()
@@ -253,10 +268,16 @@ onMounted(async () => {
           <span class="page-title">住户管理</span>
           <span class="page-subtitle">证件号为后端脱敏返回值（保留前 6 后 4）</span>
         </div>
-        <el-button v-if="userStore.isAdmin" type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          <span>新增住户</span>
-        </el-button>
+        <div class="table-actions">
+          <el-button :loading="exporting" @click="handleExport">
+            <el-icon><Download /></el-icon>
+            <span>导出 CSV</span>
+          </el-button>
+          <el-button v-if="userStore.isAdmin" type="primary" @click="handleCreate">
+            <el-icon><Plus /></el-icon>
+            <span>新增住户</span>
+          </el-button>
+        </div>
       </div>
 
       <div class="search-bar">

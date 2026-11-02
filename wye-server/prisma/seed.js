@@ -60,6 +60,17 @@ const USERS = [
 
 async function clean(client) {
   await client.paymentAllocation.deleteMany()
+  await client.fundFlow.deleteMany()
+  await client.roomAccount.deleteMany()
+  await client.bankBatchItem.deleteMany()
+  await client.bankBatch.deleteMany()
+  await client.bankContract.deleteMany()
+  await client.notice.deleteMany()
+  await client.noticeTemplate.deleteMany()
+  await client.receipt.deleteMany()
+  await client.approval.deleteMany()
+  await client.importLog.deleteMany()
+  await client.userCommunity.deleteMany()
   await client.bill.deleteMany()
   await client.payment.deleteMany()
   await client.meterReading.deleteMany()
@@ -68,6 +79,7 @@ async function clean(client) {
   await client.building.deleteMany()
   await client.feeItem.deleteMany()
   await client.community.deleteMany()
+  await client.ledger.deleteMany()
   await client.user.deleteMany()
   await client.operationLog.deleteMany()
   await client.sequence.deleteMany()
@@ -89,7 +101,8 @@ export async function seed(client = prisma) {
     })
   }
 
-  // 2. 小区与楼栋
+  // 2. 账套、小区与楼栋
+  const defaultLedger = await client.ledger.create({ data: { name: '阳光花园账套', code: 'YGHY-DEFAULT', company: 'WYE 演示物业', enabled: true } })
   const community = await client.community.create({
     data: {
       name: '阳光花园',
@@ -266,6 +279,26 @@ export async function seed(client = prisma) {
     },
     'cashier'
   )
+
+  // 9. 二期演示数据：账套、资金账户、代扣签约、通知模板、审批、收据、导入记录
+  const ledger = await client.ledger.findFirst({ where: { code: 'YGHY-DEFAULT' } })
+  if (ledger) await client.community.update({ where: { id: community.id }, data: { ledgerId: ledger.id } })
+  const accountRoom = roomMap.get('1-202')
+  const account = await client.roomAccount.upsert({ where: { roomId: accountRoom.id }, create: { roomId: accountRoom.id, advanceBalance: D(500), depositBalance: D(1200) }, update: { advanceBalance: D(500), depositBalance: D(1200) } })
+  await client.fundFlow.createMany({ data: [
+    { roomId: accountRoom.id, accountType: 'ADVANCE', direction: 'IN', amount: D(500), balanceAfter: D(500), bizType: 'IMPORT', operator: 'admin', remark: '演示预收余额', occurredAt: new Date() },
+    { roomId: accountRoom.id, accountType: 'DEPOSIT', direction: 'IN', amount: D(1200), balanceAfter: D(1200), bizType: 'DEPOSIT_IN', operator: 'admin', remark: '演示押金', occurredAt: new Date() }
+  ] })
+  await client.bankContract.create({ data: { roomId: roomMap.get('1-102').id, bankName: '演示银行', accountName: '李四', accountNoMasked: '6222****1234', contractNo: 'DEMO-001', status: 'ACTIVE', signedAt: new Date() } })
+  await client.noticeTemplate.createMany({ data: [
+    { name: '短信欠费提醒', channel: 'SMS', content: '{业主}您好，{房号}{账期}欠费{金额}元，请及时缴费。', enabled: true },
+    { name: '邮件欠费提醒', channel: 'EMAIL', title: 'WYE 物业欠费提醒', content: '{业主}您好，{小区}{房号}有账单欠费{金额}元。', enabled: true }
+  ] })
+  await client.approval.create({ data: { approvalNo: 'A-DEMO-001', type: 'BILL_DISCOUNT', targetType: 'BILL', targetId: 1, roomId: roomMap.get('1-101').id, amount: D(120), reason: '演示减免审批', applicant: 'cashier', status: 'PENDING' } })
+  const firstPayment = await client.payment.findFirst({ orderBy: { id: 'asc' } })
+  if (firstPayment) await client.receipt.create({ data: { receiptNo: 'R-DEMO-001', type: 'RECEIPT', paymentId: firstPayment.id, roomId: firstPayment.roomId, title: '阳光花园业主', amount: firstPayment.amount, issuedAt: new Date(), operator: 'admin' } })
+  await client.importLog.create({ data: { type: 'advances', fileName: 'demo-advance.csv', totalCount: 1, successCount: 1, failCount: 0, detail: '[]', operator: 'admin' } })
+  void account
 
   const [roomCount, billCount, paymentCount] = await Promise.all([
     client.room.count(),

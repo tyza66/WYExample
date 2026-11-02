@@ -31,3 +31,12 @@ export function updateBill(id, data) {
 export function voidBill(id, data) {
   return request.post(`/bills/${id}/void`, data)
 }
+
+/**
+ * POST /api/bills/late-fee —— 计提滞纳金（二期，docs/api.md §4.3）
+ * req: { period, communityId?, buildingId?, feeItemIds? }
+ * res: { updated, totalLateFee, skipped }
+ */
+export function chargeLateFee(data) {
+  return request.post('/bills/late-fee', data)
+}

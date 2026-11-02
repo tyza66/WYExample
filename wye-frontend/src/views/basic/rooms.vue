@@ -6,7 +6,7 @@ import { communityOptions } from '@/api/community'
 import { buildingOptions } from '@/api/building'
 import { useUserStore } from '@/stores/user'
 import { dictLabel, dictOptions, dictTag } from '@/utils/dict'
-import { exportCsv, exportFileName } from '@/utils/export'
+import { exportBackend } from '@/utils/export'
 import { formatNumber } from '@/utils/format'
 
 const userStore = useUserStore()
@@ -237,30 +237,12 @@ async function handleDelete(row) {
   }
 }
 
-/** 导出当前筛选条件下最多 1000 条房屋数据（前端拼接 CSV，带 BOM） */
+/** 导出当前筛选条件下的房屋数据（后端 CSV，/api/export/rooms） */
 async function handleExport() {
   loading.value = true
   try {
-    const data = await listRooms({ ...query, page: 1, size: 100 })
-    const rows = (data?.list || []).map((row) => [
-      row.communityName,
-      row.buildingName,
-      row.unit,
-      row.roomNo,
-      row.floor,
-      row.area,
-      dictLabel('roomType', row.roomType),
-      dictLabel('roomStatus', row.status),
-      row.residentCount,
-      row.remark
-    ])
-    exportCsv(
-      exportFileName('房屋列表', query.communityId ? `小区${query.communityId}` : '全部'),
-      ['小区', '楼栋', '单元', '房号', '楼层', '面积(㎡)', '房屋类型', '状态', '住户数', '备注'],
-      rows,
-      [null, null, null, null, null, (v) => formatNumber(v), null, null, null, null]
-    )
-    ElMessage.success(`已导出 ${rows.length} 条（单次最多 100 条）`)
+    await exportBackend('rooms', { ...query, page: undefined, size: undefined }, '房屋')
+    ElMessage.success('已开始下载房屋 CSV')
   } catch (e) {
     // 提示已由拦截器处理
   } finally {

@@ -1,0 +1,35 @@
+# 用 PostgreSQL 16 跑 WYE（叠加在 docker-compose.yml 之上）
+#
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wye-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wye}
+      POSTGRES_USER: ${POSTGRES_USER:-wye}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wye}
+      TZ: Asia/Shanghai
+    volumes:
+      - wye-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wye} -d ${POSTGRES_DB:-wye}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  wye:
+    build:
+      context: .
+      args:
+        DB_PROVIDER: postgresql
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wye}:${POSTGRES_PASSWORD:-wye}@postgres:5432/${POSTGRES_DB:-wye}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  wye-pg-data:

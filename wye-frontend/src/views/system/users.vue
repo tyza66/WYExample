@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createUser, disableUser, listUsers, resetUserPassword, updateUser } from '@/api/user'
+import { communityOptions } from '@/api/community'
 import { useUserStore } from '@/stores/user'
 import { dictLabel, dictOptions, dictTag } from '@/utils/dict'
 import { formatDateTime } from '@/utils/format'
@@ -33,8 +34,14 @@ const form = reactive({
   role: 'CASHIER',
   phone: '',
   enabled: true,
+  dataScope: 'ALL',
+  communityIds: [],
   remark: ''
 })
+
+/** 可见小区选项（dataScope = COMMUNITY 时启用） */
+const communityList = ref([])
+const dataScopeOptions = dictOptions('dataScope')
 
 const rules = {
   username: [{ required: true, message: '请输入登录名', trigger: 'blur' }],
@@ -48,6 +55,17 @@ const rules = {
         callback()
       },
       trigger: 'blur'
+    }
+  ],
+  communityIds: [
+    {
+      validator: (rule, value, callback) => {
+        if (form.dataScope === 'COMMUNITY' && (!value || value.length === 0)) {
+          return callback(new Error('数据范围为「指定小区」时，至少选择一个小区'))
+        }
+        callback()
+      },
+      trigger: 'change'
     }
   ]
 }
@@ -94,6 +112,8 @@ function resetForm() {
   form.role = 'CASHIER'
   form.phone = ''
   form.enabled = true
+  form.dataScope = 'ALL'
+  form.communityIds = []
   form.remark = ''
   formRef.value?.clearValidate()
 }
@@ -114,6 +134,8 @@ function handleEdit(row) {
     role: row.role ?? 'CASHIER',
     phone: row.phone ?? '',
     enabled: !!row.enabled,
+    dataScope: row.dataScope ?? 'ALL',
+    communityIds: Array.isArray(row.communityIds) ? [...row.communityIds] : [],
     remark: row.remark ?? ''
   })
   dialogTitle.value = '编辑用户'
@@ -135,6 +157,8 @@ async function handleSubmit() {
     role: form.role,
     phone: form.phone || null,
     enabled: !!form.enabled,
+    dataScope: form.dataScope,
+    communityIds: form.dataScope === 'COMMUNITY' ? form.communityIds : [],
     remark: form.remark || null
   }
   if (form.password) payload.password = form.password
@@ -191,6 +215,8 @@ async function handleToggleEnabled(row) {
         role: row.role,
         phone: row.phone || null,
         enabled: true,
+        dataScope: row.dataScope || 'ALL',
+        communityIds: Array.isArray(row.communityIds) ? row.communityIds : [],
         remark: row.remark || null
       })
       ElMessage.success('已启用')
@@ -226,7 +252,14 @@ async function handleToggleEnabled(row) {
   }
 }
 
-onMounted(loadData)
+onMounted(async () => {
+  try {
+    communityList.value = (await communityOptions()) || []
+  } catch (e) {
+    communityList.value = []
+  }
+  loadData()
+})
 </script>
 
 <template>
@@ -277,6 +310,21 @@ onMounted(loadData)
         </el-table-column>
         <el-table-column prop="phone" label="手机号" min-width="130">
           <template #default="{ row }">{{ row.phone || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="dataScope" label="数据范围" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="dictTag('dataScope', row.dataScope || 'ALL')" size="small" effect="light">
+              {{ dictLabel('dataScope', row.dataScope || 'ALL') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="communityIds" label="可见小区" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            <template v-if="(row.dataScope || 'ALL') === 'ALL'">全部小区</template>
+            <template v-else>
+              {{ (row.communityIds || []).map((cid) => communityList.find((c) => c.id === cid)?.label || cid).join('、') || '-' }}
+            </template>
+          </template>
         </el-table-column>
         <el-table-column prop="enabled" label="启用" width="90" align="center">
           <template #default="{ row }">
@@ -353,6 +401,18 @@ onMounted(loadData)
         </el-form-item>
         <el-form-item label="启用" prop="enabled">
           <el-switch v-model="form.enabled" />
+        </el-form-item>
+        <el-form-item label="数据范围" prop="dataScope">
+          <el-radio-group v-model="form.dataScope">
+            <el-radio-button v-for="item in dataScopeOptions" :key="item.value" :value="item.value">
+              {{ item.label }}
+            </el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="form.dataScope === 'COMMUNITY'" label="可见小区" prop="communityIds">
+          <el-select v-model="form.communityIds" multiple collapse-tags collapse-tags-tooltip placeholder="选择该用户可见的小区" style="width: 100%">
+            <el-option v-for="item in communityList" :key="item.id" :label="item.label" :value="item.id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
           <el-input v-model="form.remark" type="textarea" :rows="3" maxlength="255" show-word-limit />

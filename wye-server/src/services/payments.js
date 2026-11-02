@@ -6,6 +6,8 @@ import { toDate } from '../common/utils.js'
 import { PAYMENT_METHOD, valuesOf } from '../common/constants.js'
 import { nextPaymentNo } from './numbering.js'
 import { billAmounts, paymentVO } from './serialize.js'
+import { applyFlow } from './accounts.js'
+import { ACCOUNT_TYPE } from '../common/constants.js'
 
 export const PAYMENT_INCLUDE = {
   room: { include: { community: true, building: true } },
@@ -27,7 +29,7 @@ export async function roomArrears(tx, roomId) {
   const client = tx || prisma
   const bills = await client.bill.findMany({
     where: { roomId: Number(roomId), status: { not: 'VOID' } },
-    select: { amount: true, discount: true, paidAmount: true }
+    select: { amount: true, discount: true, lateFee: true, paidAmount: true }
   })
   return bills.reduce((acc, row) => {
     const { arrears } = billAmounts(row)
@@ -76,6 +78,8 @@ export async function createPayment(payload, operator) {
         roomId,
         amount: amount.toDecimalPlaces(2),
         method,
+        channel: payload.channel || 'COUNTER',
+        bizType: 'BILL',
         paidAt,
         operator,
         remark: payload.remark ? String(payload.remark).slice(0, 255) : null
@@ -126,12 +130,31 @@ export async function createPayment(payload, operator) {
     const allocated = amount.minus(remaining)
     const arrears = await roomArrears(tx, roomId)
 
+    // 未核销完的部分进预收余额（单一数据源：wye_room_account + wye_fund_flow）
+    let advanceBalance = null
+    if (remaining.greaterThan(0)) {
+      const { balanceAfter } = await applyFlow(tx, {
+        roomId,
+        accountType: ACCOUNT_TYPE.ADVANCE,
+        direction: 'IN',
+        bizType: 'PAYMENT_ADVANCE',
+        amount: remaining,
+        refType: 'PAYMENT',
+        refId: payment.id,
+        operator,
+        remark: '收款未核销部分转预收',
+        occurredAt: paidAt
+      })
+      advanceBalance = yuan(balanceAfter)
+    }
+
     return {
       paymentId: payment.id,
       paymentNo: payment.paymentNo,
       amount: yuan(amount),
       allocatedAmount: yuan(allocated),
       advanceAmount: yuan(remaining.isNegative() ? D(0) : remaining),
+      advanceBalance,
       allocations,
       roomArrearsAfter: yuan(arrears)
     }

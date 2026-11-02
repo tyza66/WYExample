@@ -15,6 +15,18 @@ export async function registerAuth(app) {
   app.decorate('authenticate', async function (request, reply) {
     try {
       await request.jwtVerify()
+      if (request.user?.scope === 'PORTAL') return reply.code(403).send(forbidden)
+    } catch (error) {
+      if (error?.statusCode === 403) return reply.code(403).send(forbidden)
+      return reply.code(401).send(unauthorized)
+    }
+    return undefined
+  })
+
+  app.decorate('authenticatePortal', async function (request, reply) {
+    try {
+      await request.jwtVerify()
+      if (request.user?.scope !== 'PORTAL' || !request.user?.roomId) return reply.code(403).send(forbidden)
     } catch {
       return reply.code(401).send(unauthorized)
     }

@@ -26,6 +26,7 @@ model User {
   realName  String   @map("real_name")
   role      String
   phone     String?
+  dataScope String   @default("ALL") @map("data_scope")
   enabled   Boolean  @default(true)
   remark    String?
   createdAt DateTime @default(now()) @map("created_at")
@@ -41,6 +42,7 @@ model Community {
   address   String?
   manager   String?
   phone     String?
+  ledgerId  Int?     @map("ledger_id")
   remark    String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -121,6 +123,8 @@ model FeeItem {
   priceUnit   String?  @map("price_unit")
   period      String
   communityId Int?     @map("community_id")
+  lateFeeRate Decimal  @default(0) @map("late_fee_rate")
+  graceDays   Int      @default(0) @map("grace_days")
   enabled     Boolean  @default(true)
   sortNo      Int      @default(0) @map("sort_no")
   remark      String?
@@ -145,6 +149,8 @@ model Bill {
   unitPrice   Decimal   @map("unit_price")
   amount      Decimal
   discount    Decimal   @default(0)
+  lateFee     Decimal   @default(0) @map("late_fee")
+  lateFeeAt   DateTime? @map("late_fee_at")
   paidAmount  Decimal   @default(0) @map("paid_amount")
   status      String
   dueDate     DateTime? @map("due_date")
@@ -170,6 +176,8 @@ model Payment {
   roomId      Int      @map("room_id")
   amount      Decimal
   method      String
+  channel     String   @default("COUNTER")
+  bizType     String   @default("BILL") @map("biz_type")
   paidAt      DateTime @map("paid_at")
   operator    String
   remark      String?
@@ -229,4 +237,208 @@ model OperationLog {
 
   @@index([createdAt])
   @@map("wye_operation_log")
+}
+
+// ==================== 二期：账套 / 资金 / 代扣 / 通知 / 票据 / 审批 ====================
+// 说明：二期新增模型的关联字段只存外键数值（不声明 Prisma relation），
+//      展示所需的小区/房号等由服务层批量查回，避免多张表互相牵扯。
+
+model Ledger {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  company   String?
+  enabled   Boolean  @default(true)
+  remark    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("wye_ledger")
+}
+
+// 用户可见小区（dataScope = COMMUNITY 时生效）
+model UserCommunity {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  communityId Int      @map("community_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, communityId])
+  @@map("wye_user_community")
+}
+
+// 房屋资金账户：预收余额 + 押金余额（余额只能由资金流水推导，禁止直接改）
+model RoomAccount {
+  id             Int      @id @default(autoincrement())
+  roomId         Int      @unique @map("room_id")
+  advanceBalance Decimal  @default(0) @map("advance_balance")
+  depositBalance Decimal  @default(0) @map("deposit_balance")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("wye_room_account")
+}
+
+model FundFlow {
+  id           Int      @id @default(autoincrement())
+  roomId       Int      @map("room_id")
+  accountType  String   @map("account_type")
+  direction    String
+  amount       Decimal
+  balanceAfter Decimal  @map("balance_after")
+  bizType      String   @map("biz_type")
+  refType      String?  @map("ref_type")
+  refId        Int?     @map("ref_id")
+  operator     String?
+  remark       String?
+  occurredAt   DateTime @map("occurred_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([roomId, occurredAt])
+  @@map("wye_fund_flow")
+}
+
+// 银行代扣签约：只存掩码账号与签约号，禁止落库完整银行卡号
+model BankContract {
+  id              Int      @id @default(autoincrement())
+  roomId          Int      @map("room_id")
+  bankName        String   @map("bank_name")
+  accountName     String   @map("account_name")
+  accountNoMasked String   @map("account_no_masked")
+  contractNo      String?  @map("contract_no")
+  status          String   @default("ACTIVE")
+  signedAt        DateTime? @map("signed_at")
+  remark          String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([roomId])
+  @@map("wye_bank_contract")
+}
+
+model BankBatch {
+  id           Int       @id @default(autoincrement())
+  batchNo      String    @unique @map("batch_no")
+  period       String
+  communityId  Int?      @map("community_id")
+  totalCount   Int       @default(0) @map("total_count")
+  totalAmount  Decimal   @default(0) @map("total_amount")
+  successCount Int       @default(0) @map("success_count")
+  failCount    Int       @default(0) @map("fail_count")
+  status       String    @default("GENERATED")
+  fileName     String?   @map("file_name")
+  operator     String?
+  returnedAt   DateTime? @map("returned_at")
+  remark       String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([period, status])
+  @@map("wye_bank_batch")
+}
+
+model BankBatchItem {
+  id              Int      @id @default(autoincrement())
+  batchId         Int      @map("batch_id")
+  roomId          Int      @map("room_id")
+  billId          Int      @map("bill_id")
+  amount          Decimal
+  result          String   @default("PENDING")
+  failReason      String?  @map("fail_reason")
+  accountName     String?  @map("account_name")
+  accountNoMasked String?  @map("account_no_masked")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([batchId])
+  @@map("wye_bank_batch_item")
+}
+
+model NoticeTemplate {
+  id        Int      @id @default(autoincrement())
+  name      String
+  channel   String
+  title     String?
+  content   String
+  enabled   Boolean  @default(true)
+  remark    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("wye_notice_template")
+}
+
+model Notice {
+  id          Int       @id @default(autoincrement())
+  channel     String
+  templateId  Int?      @map("template_id")
+  roomId      Int       @map("room_id")
+  billId      Int?      @map("bill_id")
+  receiver    String?
+  content     String
+  status      String    @default("PENDING")
+  provider    String?
+  providerMsg String?   @map("provider_msg")
+  sentAt      DateTime? @map("sent_at")
+  operator    String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([roomId, createdAt])
+  @@map("wye_notice")
+}
+
+model Receipt {
+  id         Int       @id @default(autoincrement())
+  receiptNo  String    @unique @map("receipt_no")
+  type       String
+  paymentId  Int       @map("payment_id")
+  roomId     Int       @map("room_id")
+  title      String
+  taxNo      String?   @map("tax_no")
+  amount     Decimal
+  status     String    @default("ISSUED")
+  issuedAt   DateTime  @map("issued_at")
+  operator   String?
+  voidReason String?   @map("void_reason")
+  remark     String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([roomId, issuedAt])
+  @@map("wye_receipt")
+}
+
+model Approval {
+  id            Int       @id @default(autoincrement())
+  approvalNo    String    @unique @map("approval_no")
+  type          String
+  targetType    String?   @map("target_type")
+  targetId      Int?      @map("target_id")
+  roomId        Int?      @map("room_id")
+  amount        Decimal   @default(0)
+  payload       String?
+  reason        String
+  applicant     String
+  status        String    @default("PENDING")
+  approver      String?
+  approveRemark String?   @map("approve_remark")
+  decidedAt     DateTime? @map("decided_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("wye_approval")
+}
+
+model ImportLog {
+  id           Int      @id @default(autoincrement())
+  type         String
+  fileName     String?  @map("file_name")
+  totalCount   Int      @default(0) @map("total_count")
+  successCount Int      @default(0) @map("success_count")
+  failCount    Int      @default(0) @map("fail_count")
+  detail       String?
+  operator     String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("wye_import_log")
 }

@@ -1,3 +1,5 @@
+import request from '@/api/request'
+
 /**
  * 前端 CSV 导出工具。
  * 注意：必须写入 UTF-8 BOM（\uFEFF），否则 Excel 打开中文会乱码。
@@ -63,4 +65,33 @@ export function exportFileName(prefix, suffix = '') {
   const pad = (n) => String(n).padStart(2, '0')
   const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}`
   return suffix ? `${prefix}_${suffix}_${stamp}` : `${prefix}_${stamp}`
+}
+
+/**
+ * 下载后端生成的 CSV（docs/api.md §4.7）。
+ * 后端返回 UTF-8 带 BOM 的文本；演示模式下 mock 同样返回 CSV 文本，
+ * 走统一 axios 实例后两种模式行为一致。
+ * @param {string} path 以 / 开头的接口路径，如 /export/bills
+ * @param {object} [params] 查询参数（筛选条件）
+ * @param {string} [filename] 下载文件名（不含扩展名）
+ */
+export async function downloadBackendCsv(path, params = {}, filename = 'export') {
+  const text = await request.get(path, {
+    params,
+    responseType: 'text',
+    transformResponse: [(data) => data]
+  })
+  const csv = String(text ?? '').replace(/^\uFEFF/, '')
+  downloadCsv(filename, csv)
+  return csv
+}
+
+/**
+ * 导出接口的便捷封装：type ∈ rooms/residents/bills/arrears/payments/fund-flows
+ * @param {string} type
+ * @param {object} [params] 筛选条件
+ * @param {string} [prefix] 文件名前缀（默认取类型名）
+ */
+export function exportBackend(type, params = {}, prefix) {
+  return downloadBackendCsv(`/export/${type}`, params, exportFileName(prefix || type))
 }

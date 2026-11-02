@@ -1,0 +1,43 @@
+# 用 MySQL 8 跑 WYE（叠加在 docker-compose.yml 之上）
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build
+#
+# 说明：Prisma 的 provider 不支持环境变量，必须在构建镜像时通过 DB_PROVIDER 构建参数改写，
+#      所以这里用 override 文件覆盖 build.args 与 DATABASE_URL。
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: wye-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-wye-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-wye}
+      MYSQL_USER: ${MYSQL_USER:-wye}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wye}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - wye-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-wye-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  wye:
+    build:
+      context: .
+      args:
+        DB_PROVIDER: mysql
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-wye}:${MYSQL_PASSWORD:-wye}@mysql:3306/${MYSQL_DATABASE:-wye}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  wye-mysql-data:

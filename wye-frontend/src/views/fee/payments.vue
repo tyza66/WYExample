@@ -8,10 +8,12 @@ import { roomOptions } from '@/api/room'
 import { useUserStore } from '@/stores/user'
 import { dictLabel, dictOptions, dictTag } from '@/utils/dict'
 import { formatAmount, formatDate, formatDateTime, now } from '@/utils/format'
+import { exportBackend } from '@/utils/export'
 
 const userStore = useUserStore()
 
 const loading = ref(false)
+const exporting = ref(false)
 const submitting = ref(false)
 
 const query = reactive({
@@ -241,6 +243,19 @@ async function handleViewDetail(row) {
   }
 }
 
+/** 导出当前筛选条件下的收款流水（后端 CSV，/api/export/payments） */
+async function handleExport() {
+  exporting.value = true
+  try {
+    await exportBackend('payments', { ...query, page: undefined, size: undefined }, '收款流水')
+    ElMessage.success('已开始下载收款 CSV')
+  } catch (e) {
+    // 提示已由拦截器处理
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(async () => {
   await loadCommunities()
   await loadData()
@@ -255,10 +270,16 @@ onMounted(async () => {
           <span class="page-title">收款登记与流水</span>
           <span class="page-subtitle">收款按应缴日升序自动核销未结清账单，未用完部分形成预收余额</span>
         </div>
-        <el-button v-if="userStore.canWrite" type="primary" @click="handleOpenPay">
-          <el-icon><Plus /></el-icon>
-          <span>登记收款</span>
-        </el-button>
+        <div class="table-actions">
+          <el-button :loading="exporting" @click="handleExport">
+            <el-icon><Download /></el-icon>
+            <span>导出 CSV</span>
+          </el-button>
+          <el-button v-if="userStore.canWrite" type="primary" @click="handleOpenPay">
+            <el-icon><Plus /></el-icon>
+            <span>登记收款</span>
+          </el-button>
+        </div>
       </div>
 
       <div class="search-bar">

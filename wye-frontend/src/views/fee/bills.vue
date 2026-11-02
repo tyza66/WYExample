@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { generateBills, listBills, updateBill, voidBill } from '@/api/bill'
+import { chargeLateFee, generateBills, listBills, updateBill, voidBill } from '@/api/bill'
 import { communityOptions } from '@/api/community'
 import { buildingOptions } from '@/api/building'
 import { roomOptions, listRooms } from '@/api/room'
@@ -9,6 +9,7 @@ import { feeItemOptions } from '@/api/feeItem'
 import { useUserStore } from '@/stores/user'
 import { dictLabel, dictOptions, dictTag } from '@/utils/dict'
 import { currentPeriod, formatAmount, formatDate, formatNumber, formatPrice } from '@/utils/format'
+import { exportBackend } from '@/utils/export'
 
 const userStore = useUserStore()
 
@@ -50,6 +51,78 @@ const generateForm = reactive({
 })
 const generateBuildings = ref([])
 const generateFeeItems = ref([])
+
+// ---------- 计提滞纳金（二期） ----------
+const lateFeeVisible = ref(false)
+const lateFeeResult = ref(null)
+const lateFeeForm = reactive({
+  period: currentPeriod(),
+  communityId: null,
+  buildingId: null,
+  feeItemIds: []
+})
+const lateFeeBuildings = ref([])
+const lateFeeFeeItems = ref([])
+const exporting = ref(false)
+
+async function handleExport() {
+  exporting.value = true
+  try {
+    await exportBackend('bills', { ...query, page: undefined, size: undefined }, '账单')
+    ElMessage.success('已开始下载账单 CSV')
+  } catch (e) {
+    // 拦截器已提示
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function handleOpenLateFee() {
+  lateFeeResult.value = null
+  lateFeeForm.period = query.period || currentPeriod()
+  lateFeeForm.communityId = query.communityId || null
+  lateFeeForm.buildingId = null
+  lateFeeForm.feeItemIds = []
+  lateFeeBuildings.value = []
+  lateFeeVisible.value = true
+  try {
+    lateFeeFeeItems.value = (await feeItemOptions(true)) || []
+  } catch (e) {
+    lateFeeFeeItems.value = []
+  }
+  if (lateFeeForm.communityId) loadBuildings(lateFeeForm.communityId, lateFeeBuildings)
+}
+
+watch(
+  () => lateFeeForm.communityId,
+  (value) => {
+    lateFeeForm.buildingId = null
+    loadBuildings(value, lateFeeBuildings)
+  }
+)
+
+async function handleLateFeeSubmit() {
+  if (!lateFeeForm.period) {
+    ElMessage.warning('请选择账期')
+    return
+  }
+  submitting.value = true
+  try {
+    const data = await chargeLateFee({
+      period: lateFeeForm.period,
+      communityId: lateFeeForm.communityId || null,
+      buildingId: lateFeeForm.buildingId || null,
+      feeItemIds: lateFeeForm.feeItemIds.length ? lateFeeForm.feeItemIds : null
+    })
+    lateFeeResult.value = data || null
+    ElMessage.success(`计提完成：更新 ${data?.updated ?? 0} 张，滞纳金合计 ${formatAmount(data?.totalLateFee)} 元`)
+    loadData()
+  } catch (e) {
+    // 拦截器已提示
+  } finally {
+    submitting.value = false
+  }
+}
 
 // ---------- 调整 ----------
 const adjustVisible = ref(false)
@@ -312,10 +385,20 @@ onMounted(async () => {
           <span class="page-title">账单管理</span>
           <span class="page-subtitle">同一（房屋 × 项目 × 账期）只允许一张有效账单</span>
         </div>
-        <el-button v-if="userStore.canWrite" type="primary" @click="handleOpenGenerate">
-          <el-icon><MagicStick /></el-icon>
-          <span>生成账单</span>
-        </el-button>
+        <div class="table-actions">
+          <el-button :loading="exporting" @click="handleExport">
+            <el-icon><Download /></el-icon>
+            <span>导出 CSV</span>
+          </el-button>
+          <el-button v-if="userStore.canWrite" @click="handleOpenLateFee">
+            <el-icon><Timer /></el-icon>
+            <span>计提滞纳金</span>
+          </el-button>
+          <el-button v-if="userStore.canWrite" type="primary" @click="handleOpenGenerate">
+            <el-icon><MagicStick /></el-icon>
+            <span>生成账单</span>
+          </el-button>
+        </div>
       </div>
 
       <div class="search-bar">
@@ -378,6 +461,13 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column prop="discount" label="减免" width="100" align="right">
           <template #default="{ row }"><span class="amount-cell">{{ formatAmount(row.discount) }}</span></template>
+        </el-table-column>
+        <el-table-column prop="lateFee" label="滞纳金" width="110" align="right">
+          <template #default="{ row }">
+            <span class="amount-cell" :class="Number(row.lateFee) > 0 ? 'text-danger' : ''">
+              {{ formatAmount(row.lateFee) }}
+            </span>
+          </template>
         </el-table-column>
         <el-table-column prop="netAmount" label="应收净额" width="110" align="right">
           <template #default="{ row }"><span class="amount-cell">{{ formatAmount(row.netAmount) }}</span></template>
@@ -547,6 +637,48 @@ onMounted(async () => {
 
       <template #footer>
         <el-button type="primary" @click="generateResultVisible = false">知道了</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 计提滞纳金 -->
+    <el-dialog v-model="lateFeeVisible" title="计提滞纳金" width="560px" destroy-on-close>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="按「逾期天数 − 宽限期」× 净额 × 日费率计算，覆盖写入 lateFee，可反复计提重算。"
+        style="margin-bottom: 14px"
+      />
+      <el-form :model="lateFeeForm" label-width="110px">
+        <el-form-item label="账期" required>
+          <el-date-picker v-model="lateFeeForm.period" type="month" value-format="YYYY-MM" :clearable="false" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="小区">
+          <el-select v-model="lateFeeForm.communityId" placeholder="全部小区" clearable filterable style="width: 100%">
+            <el-option v-for="item in communities" :key="item.id" :label="item.label" :value="item.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="楼栋">
+          <el-select v-model="lateFeeForm.buildingId" placeholder="全部楼栋" clearable :disabled="!lateFeeForm.communityId" style="width: 100%">
+            <el-option v-for="item in lateFeeBuildings" :key="item.id" :label="item.label" :value="item.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="收费项目">
+          <el-select v-model="lateFeeForm.feeItemIds" multiple collapse-tags collapse-tags-tooltip placeholder="留空表示全部项目" style="width: 100%">
+            <el-option v-for="item in lateFeeFeeItems" :key="item.id" :label="item.label" :value="item.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <el-descriptions v-if="lateFeeResult" :column="3" border size="small" style="margin-top: 8px">
+        <el-descriptions-item label="更新账单">{{ lateFeeResult.updated ?? 0 }} 张</el-descriptions-item>
+        <el-descriptions-item label="滞纳金合计">{{ formatAmount(lateFeeResult.totalLateFee) }} 元</el-descriptions-item>
+        <el-descriptions-item label="跳过">{{ lateFeeResult.skipped ?? 0 }} 张</el-descriptions-item>
+      </el-descriptions>
+
+      <template #footer>
+        <el-button @click="lateFeeVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleLateFeeSubmit">开始计提</el-button>
       </template>
     </el-dialog>
 

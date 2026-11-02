@@ -7,7 +7,7 @@ import { parse } from '../common/validate.js'
 import { D, yuan } from '../common/money.js'
 import { assertPeriod, pageParams, shiftPeriod, toDate } from '../common/utils.js'
 import { BILL_STATUS } from '../common/constants.js'
-import { adjustBill, generateBills, voidBill, BILL_INCLUDE } from '../services/billing.js'
+import { adjustBill, calculateLateFees, generateBills, voidBill, BILL_INCLUDE } from '../services/billing.js'
 import { createPayment, findPayment, PAYMENT_INCLUDE } from '../services/payments.js'
 import { billVO, meterReadingVO, paymentVO } from '../services/serialize.js'
 import { recordLog } from '../services/log.js'
@@ -82,15 +82,35 @@ export async function registerBillingRoutes(app) {
     return ok(result)
   })
 
+  app.post('/api/bills/late-fee', { preHandler: [auth, cashier] }, async (request) => {
+    const payload = parse(
+      z.object({
+        period: z.string().trim().min(1, '账期不能为空'),
+        communityId: z.coerce.number().int().positive().nullish(),
+        buildingId: z.coerce.number().int().positive().nullish(),
+        feeItemIds: z.array(z.coerce.number().int().positive()).nullish()
+      }),
+      request.body
+    )
+    const result = await calculateLateFees(payload)
+    await recordLog(request, { module: '账单', action: '计提滞纳金', target: payload.period, detail: JSON.stringify(result) })
+    return ok(result)
+  })
+
   app.put('/api/bills/:id', { preHandler: [auth, cashier] }, async (request) => {
     const payload = parse(
       z.object({
         discount: z.coerce.number().nonnegative('减免金额不能为负数').nullish(),
+        approvalNo: z.string().trim().nullish(),
         dueDate: z.string().trim().nullish(),
         remark: z.string().trim().max(255).nullish()
       }),
       request.body
     )
+    if (payload.discount !== undefined && payload.discount !== null && payload.discount >= 100) {
+      const approval = await prisma.approval.findFirst({ where: { approvalNo: payload.approvalNo || '', type: 'BILL_DISCOUNT', targetId: Number(request.params.id), status: 'APPROVED' } })
+      if (!approval) bad('减免 100 元及以上需先提交审批并通过')
+    }
     const bill = await adjustBill(request.params.id, payload)
     await recordLog(request, { module: '账单', action: '调整', target: bill.billNo, detail: JSON.stringify(payload) })
     return ok(bill)

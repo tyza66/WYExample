@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: true
+  vue-demi: true
+# pnpm v12 的设置在 pnpm-workspace.yaml 中读取（不再读 package.json 的 pnpm 字段）。
+# esbuild / vue-demi 的安装脚本需要放行，否则 pnpm install 报 ERR_PNPM_IGNORED_BUILDS。

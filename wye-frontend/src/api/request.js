@@ -16,6 +16,10 @@ import { ElMessage } from 'element-plus'
 
 export const TOKEN_KEY = 'wye_token'
 export const USER_KEY = 'wye_user'
+/** 当前账套（二期）：所有 GET 列表/报表请求自动附加 ledgerId */
+export const LEDGER_KEY = 'wye_ledger_id'
+/** 业主端 H5 token（二期）：/portal/* 请求优先携带 */
+export const PORTAL_TOKEN_KEY = 'wye_portal_token'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || ''
@@ -68,11 +72,26 @@ const request = axios.create({
 
 request.interceptors.request.use(
   (config) => {
-    const token = getToken()
+    const url = config.url || ''
+    let token = getToken()
+    // 业主端接口优先用门户 token（登录接口除外）
+    const portalToken = localStorage.getItem(PORTAL_TOKEN_KEY)
+    if (portalToken && url.startsWith('/portal') && !url.startsWith('/portal/login')) {
+      token = portalToken
+    }
     if (token) {
       config.headers = config.headers || {}
       config.headers.Authorization = `Bearer ${token}`
     }
+
+    // 账套过滤：给后台 GET 列表/报表自动附加 ledgerId（下拉选项与健康检查除外）
+    if ((config.method || 'get').toLowerCase() === 'get' && !url.startsWith('/portal') && !url.startsWith('/ledgers') && url !== '/health') {
+      const ledgerId = localStorage.getItem(LEDGER_KEY)
+      if (ledgerId && config.params?.ledgerId === undefined) {
+        config.params = { ...(config.params || {}), ledgerId }
+      }
+    }
+
     if (config.params) config.params = cleanParams(config.params)
     return config
   },

@@ -182,3 +182,68 @@
 4. **账单调整**：仅允许修改 `discount`（减免）与 `due_date`，修改须填 `remark`；应收净额 = `amount − discount`，不得低于 `paid_amount`。
 5. **金额口径**：某账期 **应收 = Σ(amount − discount)**，**实收 = Σ(paid_amount)**，**欠费 = 应收 − 实收**，**收缴率 = 实收 ÷ 应收**（应收为 0 时按 100% 处理）。所有报表口径必须与账单列表一致。
 6. **数据权限**：`ADMIN` 全部；`CASHIER` 可读全部基础资料、可生成账单、可收款、可抄表，不可删基础资料、不可管理用户；`VIEWER` 只读。写操作全部记 `wye_operation_log`。
+7. **数据范围（二期）**：用户带 `dataScope`（`ALL` / `COMMUNITY`）。`COMMUNITY` 时只能看到 `wye_user_community` 里登记的小区数据，所有列表/报表/工作台自动按此过滤。
+8. **账套（二期）**：小区归属账套（`wye_community.ledger_id`，为空归默认账套）。账单与收款的账套通过"房屋 → 小区 → 账套"推导，不冗余存储；所有列表与报表支持按账套过滤。
+9. **滞纳金（二期）**：收费项目可配 `late_fee_rate`（日费率，如 0.0005 = 万分之五/日）与 `grace_days`（宽限天数）。滞纳金按 `逾期天数 × 净额 × 日费率` 计算，四舍五入 2 位，写入 `wye_bill.late_fee`，可反复计提（覆盖重算）。**账单净额 = amount − discount + late_fee**，应收/实收/欠费/收缴率口径同步按此。
+10. **资金账户（二期）**：`wye_room_account` 保存每户 **预收余额** 与 **押金余额**。收款未核销部分自动转入预收余额；预收抵扣用余额核销账单；退款（预收/押金）会扣减余额。每次变动必须写 `wye_fund_flow`（含变动后余额），余额只能由流水推导而来，不允许直接改余额。
+11. **银行代扣（二期）**：只保存 `account_name` 与 **掩码后的账号**（`accountNoMasked`，如 `6222****1234`）与银行签约号，**禁止落库完整银行卡号**。批次内每户一行，回盘成功项自动生成 `method = BANK_DEDUCT` 的收款单并核销，失败项记录原因。
+12. **审批（二期）**：减免金额 ≥ 100 元、以及**全部**退款（预收退款、押金退还）必须先生成 `wye_approval` 审批单，通过后才执行；审批单记录申请人、审批人、时间与意见，全程留痕。
+
+## 4. 二期表与字段
+
+### 4.1 新增表清单
+
+| 表 | 说明 |
+|---|---|
+| `wye_ledger` | 账套 |
+| `wye_room_account` | 房屋资金账户（预收/押金余额） |
+| `wye_fund_flow` | 资金流水 |
+| `wye_bank_contract` | 银行代扣签约（仅掩码） |
+| `wye_bank_batch` | 代扣报盘批次 |
+| `wye_bank_batch_item` | 代扣批次明细 |
+| `wye_notice_template` | 通知模板 |
+| `wye_notice` | 通知发送记录 |
+| `wye_receipt` | 收据 / 发票 |
+| `wye_approval` | 审批单 |
+| `wye_user_community` | 用户可见小区（数据范围） |
+| `wye_import_log` | 数据导入记录 |
+
+### 4.2 关键字段
+
+**wye_ledger**：`name`、`code`（唯一）、`company`、`enabled`、`remark`。
+
+**wye_community**（新增）：`ledger_id` 可空，为空归默认账套。
+
+**wye_room_account**：`room_id`（唯一）、`advance_balance` decimal(12,2) 默认 0、`deposit_balance` decimal(12,2) 默认 0。**余额不可为负**。
+
+**wye_fund_flow**：`room_id`、`account_type`（`ADVANCE`/`DEPOSIT`）、`direction`（`IN`/`OUT`）、`amount`（>0）、`balance_after`、`biz_type`（`PAYMENT_ADVANCE` 收款转预收 / `ADVANCE_USE` 预收抵扣 / `DEPOSIT_IN` 收取押金 / `DEPOSIT_REFUND` 退还押金 / `ADVANCE_REFUND` 退还预收 / `IMPORT` 历史导入）、`ref_type`/`ref_id`（关联收款单/账单/审批单）、`operator`、`remark`、`occurred_at`。
+
+**wye_bank_contract**：`room_id`、`bank_name`、`account_name`、`account_no_masked`、`contract_no`、`status`（`ACTIVE`/`CANCELLED`）、`signed_at`、`remark`。
+
+**wye_bank_batch**：`batch_no`（唯一）、`period`、`community_id`、`total_count`、`total_amount`、`success_count`、`fail_count`、`status`（`GENERATED`/`SENT`/`RETURNED`/`CLOSED`）、`file_name`、`operator`、`returned_at`。
+
+**wye_bank_batch_item**：`batch_id`、`room_id`、`bill_id`、`amount`、`result`（`PENDING`/`SUCCESS`/`FAIL`）、`fail_reason`、`account_name`、`account_no_masked`。
+
+**wye_notice_template**：`name`、`channel`（`SMS`/`EMAIL`）、`title`、`content`（占位符 `{业主}` `{房号}` `{小区}` `{账期}` `{金额}` `{应缴日}`）、`enabled`。
+
+**wye_notice**：`channel`、`template_id`、`room_id`、`bill_id` 可空、`receiver`（脱敏）、`content`、`status`（`PENDING`/`SENT`/`FAILED`）、`provider`、`provider_msg`、`sent_at`、`operator`。
+
+**wye_receipt**：`receipt_no`（唯一）、`type`（`RECEIPT` 收据 / `INVOICE` 发票）、`payment_id`、`room_id`、`title`（抬头）、`tax_no`、`amount`、`status`（`ISSUED`/`VOID`）、`issued_at`、`operator`、`void_reason`。
+
+**wye_approval**：`approval_no`（唯一）、`type`（`BILL_DISCOUNT` 减免 / `ADVANCE_REFUND` 预收退款 / `DEPOSIT_REFUND` 押金退还）、`target_type`、`target_id`、`room_id`、`amount`、`payload`（JSON 字符串，存执行所需参数）、`reason`、`applicant`、`status`（`PENDING`/`APPROVED`/`REJECTED`）、`approver`、`approve_remark`、`decided_at`。
+
+**wye_user_community**：`user_id`、`community_id`（联合唯一）。
+
+**wye_user**（新增）：`data_scope`（`ALL` 默认 / `COMMUNITY`）。
+
+**wye_fee_item**（新增）：`late_fee_rate` decimal(12,6) 默认 0、`grace_days` int 默认 0。
+
+**wye_bill**（新增）：`late_fee` decimal(12,2) 默认 0、`late_fee_at`（最近计提时间）。
+
+**wye_payment**（新增）：`channel`（`COUNTER` 柜台 / `PORTAL` 业主端）。
+
+**wye_import_log**：`type`（`rooms`/`residents`/`arrears`/`advances`）、`file_name`、`total_count`、`success_count`、`fail_count`、`detail`（失败行明细 JSON）、`operator`。
+
+### 4.3 业主端（免登录）
+
+`POST /api/portal/login` 用「房号 + 业主手机号后 4 位」校验身份，返回短期 token（2 小时，`scope=PORTAL`），只能访问该房屋的账单与收款，以及发起在线缴费。在线缴费为**模拟支付通道**：创建支付单 → 调 `POST /api/portal/orders/{orderNo}/pay` 模拟回调成功 → 生成 `method = ONLINE`、`channel = PORTAL` 的收款单并核销。接入真实支付通道时替换 `services/payment-channel.js` 的实现即可，账务逻辑不变。

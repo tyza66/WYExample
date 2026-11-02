@@ -38,8 +38,10 @@ WYExample/
 ├── render.yaml             Render Blueprint（含持久磁盘）
 ├── railway.json            Railway 配置
 ├── netlify.toml            Netlify 静态在线 Demo（VITE_DEMO_MODE=true）
-├── scripts/                dev.sh / dev.bat 兜底启动脚本
-├── docs/                   architecture / data-model / api
+├── docker-compose.mysql.yml MySQL 8 生产覆盖配置
+├── docker-compose.postgres.yml PostgreSQL 16 生产覆盖配置
+├── scripts/                dev.sh / dev.bat / switch-db.mjs
+├── docs/                   architecture / data-model / api / deploy
 ├── wye-server/
 │   ├── package.json        dev / start / db:push / db:seed
 │   ├── prisma/
@@ -142,20 +144,17 @@ pnpm --dir wye-server db:seed    # 清空并重灌演示数据
 5. 跨表一致性（收款 + 核销 + 账单状态）必须放在 `prisma.$transaction` 里。
 6. 提交信息用 `feat:` / `fix:` / `docs:` / `refactor:` 前缀。
 
-## 7. 路线图
+## 7. 实现状态与路线图
 
-**一期（本仓库当前状态）**：基础资料、收费项目、账单生成、收款核销、抄表、欠费与收款报表、日结、用户与日志、一站式部署。
+**一期与二期已完成**：基础资料、收费项目、账单生成、收款核销、抄表、欠费与收款报表、日结、用户与日志、预收/押金/资金流水、退款与减免审批、滞纳金、银行代扣报盘回盘、催缴通知模拟通道、收据发票、CSV 导入导出、数据范围、账套、业主端 H5、SQLite/MySQL/PostgreSQL Docker 配置。
 
-**二期（欢迎认领）**
+**后续增强**：
 
-- [ ] 预收款、押金、退款与冲抵的完整资金管理
-- [ ] 银行批量代扣：报盘文件导出 / 回盘文件导入与自动核销（按银行模板可配置）
-- [ ] 催缴通知：短信 / 邮件通道对接
-- [ ] 电子发票、收据打印模板
-- [ ] 数据导入：历史欠费、预收、押金的批量迁移工具
-- [ ] 业主端：小程序查询与在线缴费
-- [ ] 权限细化：数据权限（按小区/楼栋）与操作审批流
-- [ ] 多账套、MySQL / Postgres 生产配置与定时备份脚本
+- [ ] 微信小程序壳（复用 `/portal` H5 的接口）
+- [ ] 真实短信 / 邮件 / 支付 / 银行 SDK 适配器
+- [ ] 电子发票平台接口与银行定长文件模板
+- [ ] 更细粒度的审批流与按楼栋数据权限
+- [ ] 定时备份、恢复演练与多实例部署文档
 
 ## 8. 安全与合规边界
 

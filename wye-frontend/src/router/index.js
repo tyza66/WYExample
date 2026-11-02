@@ -129,6 +129,90 @@ export const routes = [
         ]
       },
       {
+        path: 'fund',
+        name: 'Fund',
+        component: Passthrough,
+        redirect: '/fund/accounts',
+        meta: { title: '资金管理', icon: 'Coin' },
+        children: [
+          {
+            path: 'accounts',
+            name: 'FundAccounts',
+            component: () => import('@/views/fund/accounts.vue'),
+            meta: { title: '资金账户', icon: 'Wallet' }
+          },
+          {
+            path: 'flows',
+            name: 'FundFlows',
+            component: () => import('@/views/fund/flows.vue'),
+            meta: { title: '资金流水', icon: 'Tickets' }
+          },
+          {
+            path: 'approvals',
+            name: 'FundApprovals',
+            component: () => import('@/views/fund/approvals.vue'),
+            meta: { title: '审批中心', icon: 'Finished' }
+          }
+        ]
+      },
+      {
+        path: 'bank',
+        name: 'Bank',
+        component: Passthrough,
+        redirect: '/bank/contracts',
+        meta: { title: '银行代扣', icon: 'CreditCard' },
+        children: [
+          {
+            path: 'contracts',
+            name: 'BankContracts',
+            component: () => import('@/views/bank/contracts.vue'),
+            meta: { title: '代扣签约', icon: 'Postcard' }
+          },
+          {
+            path: 'batches',
+            name: 'BankBatches',
+            component: () => import('@/views/bank/batches.vue'),
+            meta: { title: '代扣批次', icon: 'Files' }
+          }
+        ]
+      },
+      {
+        path: 'notice',
+        name: 'Notice',
+        component: Passthrough,
+        redirect: '/notice/notices',
+        meta: { title: '催缴通知', icon: 'Bell' },
+        children: [
+          {
+            path: 'notices',
+            name: 'NoticeRecords',
+            component: () => import('@/views/notice/notices.vue'),
+            meta: { title: '催缴通知', icon: 'Promotion' }
+          },
+          {
+            path: 'templates',
+            name: 'NoticeTemplates',
+            component: () => import('@/views/notice/templates.vue'),
+            meta: { title: '通知模板', icon: 'Memo', roles: ['ADMIN'] }
+          }
+        ]
+      },
+      {
+        path: 'receipt',
+        name: 'Receipt',
+        component: Passthrough,
+        redirect: '/receipt/receipts',
+        meta: { title: '票据管理', icon: 'Document' },
+        children: [
+          {
+            path: 'receipts',
+            name: 'ReceiptList',
+            component: () => import('@/views/receipt/receipts.vue'),
+            meta: { title: '收据发票', icon: 'Receipt' }
+          }
+        ]
+      },
+      {
         path: 'system',
         name: 'System',
         component: Passthrough,
@@ -146,10 +230,46 @@ export const routes = [
             name: 'SystemLogs',
             component: () => import('@/views/system/logs.vue'),
             meta: { title: '操作日志', icon: 'List', roles: ['ADMIN'] }
+          },
+          {
+            path: 'ledgers',
+            name: 'SystemLedgers',
+            component: () => import('@/views/system/ledgers.vue'),
+            meta: { title: '账套管理', icon: 'Collection', roles: ['ADMIN'] }
+          },
+          {
+            path: 'import',
+            name: 'SystemImport',
+            component: () => import('@/views/system/import.vue'),
+            meta: { title: '数据导入', icon: 'Upload', roles: ['ADMIN'] }
           }
         ]
       }
     ]
+  },
+  // ---------- 业主端 H5（免登录，独立布局，不复用后台侧边栏） ----------
+  {
+    path: '/portal',
+    redirect: '/portal/login',
+    meta: { public: true, hidden: true }
+  },
+  {
+    path: '/portal/login',
+    name: 'PortalLogin',
+    component: () => import('@/views/portal/Login.vue'),
+    meta: { title: '业主登录', public: true, hidden: true }
+  },
+  {
+    path: '/portal/home',
+    name: 'PortalHome',
+    component: () => import('@/views/portal/Home.vue'),
+    meta: { title: '我的账单', public: true, hidden: true }
+  },
+  {
+    path: '/portal/success',
+    name: 'PortalSuccess',
+    component: () => import('@/views/portal/Success.vue'),
+    meta: { title: '缴费成功', public: true, hidden: true }
   },
   {
     path: '/:pathMatch(.*)*',
@@ -176,6 +296,9 @@ router.beforeEach((to) => {
     if (userStore.isLogin) return { path: '/dashboard' }
     return true
   }
+
+  // 业主端与其它公开页（含 /portal/*）免登录放行
+  if (to.meta?.public) return true
 
   if (!userStore.isLogin) {
     return { path: '/login', query: to.fullPath && to.fullPath !== '/' ? { redirect: to.fullPath } : undefined }

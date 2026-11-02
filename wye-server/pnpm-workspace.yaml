@@ -1,0 +1,5 @@
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
+# pnpm v12 安装 Prisma Client/engines 时需要显式放行生成脚本。

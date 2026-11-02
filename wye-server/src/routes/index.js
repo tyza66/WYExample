@@ -4,6 +4,7 @@ import { registerBasicRoutes } from './basic.js'
 import { registerBillingRoutes } from './billing.js'
 import { registerReportRoutes } from './reports.js'
 import { registerSystemRoutes } from './system.js'
+import { registerPhase2Routes } from './phase2.js'
 
 export async function registerRoutes(app) {
   app.get('/api/health', async () => ({
@@ -17,6 +18,7 @@ export async function registerRoutes(app) {
   await registerBillingRoutes(app)
   await registerReportRoutes(app)
   await registerSystemRoutes(app)
+  await registerPhase2Routes(app)
 }
 
 export default registerRoutes

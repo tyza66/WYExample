@@ -6,7 +6,7 @@ import { getDashboardSummary } from '@/api/dashboard'
 import { listFeeItems } from '@/api/feeItem'
 import { communityOptions } from '@/api/community'
 import { currentPeriod, formatAmount } from '@/utils/format'
-import { exportCsv, exportFileName } from '@/utils/export'
+import { exportBackend } from '@/utils/export'
 
 const loading = ref(false)
 const exporting = ref(false)
@@ -116,35 +116,12 @@ function toCsvRow(row) {
   ]
 }
 
-/** 导出全部欠费明细（逐页拉取，最多 2000 条） */
+/** 导出当前筛选条件下的欠费明细（后端 CSV，/api/export/arrears） */
 async function handleExport() {
   exporting.value = true
   try {
-    const size = 100
-    const maxRows = 2000
-    const rows = []
-    let page = 1
-    let pageTotal = 0
-    do {
-      const data = await getArrearsReport({ ...query, page, size })
-      const items = data?.list || []
-      pageTotal = data?.total || 0
-      items.forEach((item) => rows.push(item))
-      if (items.length < size || rows.length >= maxRows) break
-      page += 1
-    } while (rows.length < pageTotal)
-
-    if (rows.length === 0) {
-      ElMessage.warning('当前筛选条件下没有可导出的数据')
-      return
-    }
-
-    exportCsv(
-      exportFileName('欠费报表', query.period || '全部账期'),
-      CSV_HEADERS,
-      rows.map(toCsvRow)
-    )
-    ElMessage.success(`已导出 ${rows.length} 条${pageTotal > rows.length ? `（共 ${pageTotal} 条，单次最多 2000 条）` : ''}`)
+    await exportBackend('arrears', { ...query, page: undefined, size: undefined }, '欠费报表')
+    ElMessage.success('已开始下载欠费 CSV')
   } catch (e) {
     // 提示已由拦截器处理
   } finally {

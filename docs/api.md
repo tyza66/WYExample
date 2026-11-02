@@ -246,3 +246,118 @@
 | 作废有核销的账单 | 该账单已有收款记录，请先处理对应收款单 |
 | 减免后低于已收 | 减免后金额不能低于已收金额 313.25 元 |
 | 删除被引用的数据 | 该楼栋下仍有房屋，无法删除 |
+
+## 4. 二期接口
+
+统一约定不变：`{code,message,data}` 信封、分页 `{list,total,page,size}`、角色不足 403。二期新增接口全部需要登录（除 `/api/portal/*`）。
+
+### 4.1 账套
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| GET | `/api/ledgers` | 全部 | 账套列表 |
+| GET | `/api/ledgers/options` | 全部 | 下拉选项 |
+| POST | `/api/ledgers` | ADMIN | 新建 |
+| PUT | `/api/ledgers/{id}` | ADMIN | 修改 |
+| DELETE | `/api/ledgers/{id}` | ADMIN | 删除（有小区归属时禁止） |
+
+所有列表/报表接口支持可选的 `ledgerId` 过滤；不传表示全部账套。
+
+### 4.2 资金账户与流水
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| GET | `/api/accounts` | 全部 | 房屋资金账户列表。过滤：`communityId`、`buildingId`、`roomId`、`keyword`（房号/业主），只有余额或欠费非 0 时可用 `nonzero=true` 过滤。返回 `advanceBalance`、`depositBalance`、`arrears`、`roomNo`、`ownerName` |
+| GET | `/api/accounts/{roomId}` | 全部 | 账户详情：余额 + 该户最近 50 条资金流水 |
+| POST | `/api/accounts/deposit` | ADMIN/CASHIER | 收取押金 `{roomId, amount, method, paidAt?, remark}` → 增加押金余额并写流水 |
+| POST | `/api/accounts/advance/use` | ADMIN/CASHIER | 预收抵扣 `{roomId, amount?, billIds?, remark}`。不传 `billIds` 时按应缴日顺序核销该户欠费账单；不传 `amount` 时用余额尽可能抵扣。返回 `usedAmount`、`remainingAdvance`、`allocations` |
+| POST | `/api/accounts/refund` | ADMIN | 退款 `{roomId, accountType: 'ADVANCE'\|'DEPOSIT', amount, method, remark}`。**必须携带已通过的审批单** `approvalNo`，否则报错「退款需先提交审批」 |
+| GET | `/api/fund-flows` | 全部 | 资金流水。过滤：`roomId`、`accountType`、`bizType`、`from`、`to`、`keyword` |
+
+### 4.3 滞纳金
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| POST | `/api/bills/late-fee` | ADMIN/CASHIER | 计提滞纳金 `{period, communityId?, buildingId?, feeItemIds?}`。按「逾期天数 − 宽限期」× 净额 × 日费率 计算，覆盖写入 `lateFee`。返回 `{updated, totalLateFee, skipped}` |
+
+账单对象新增字段：`lateFee`、`netAmount`（= amount − discount + lateFee）、`lateFeeAt`。
+
+### 4.4 银行代扣
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| GET | `/api/bank-contracts` | 全部 | 签约列表。过滤：`roomId`、`status`、`keyword` |
+| POST | `/api/bank-contracts` | ADMIN | 新增签约 `{roomId, bankName, accountName, accountNoMasked, contractNo, signedAt?, remark}` |
+| PUT | `/api/bank-contracts/{id}` | ADMIN | 修改（可改 `status`） |
+| DELETE | `/api/bank-contracts/{id}` | ADMIN | 解约（置 `CANCELLED`，不物理删除） |
+| GET | `/api/bank-batches` | 全部 | 批次列表。过滤：`period`、`status`、`communityId` |
+| POST | `/api/bank-batches/generate` | ADMIN/CASHIER | 生成报盘批次 `{period, communityId?, buildingId?, feeItemIds?}`。只取「已签约 + 该账期有欠费」的房屋，返回批次与明细 |
+| GET | `/api/bank-batches/{id}` | 全部 | 批次详情（含明细） |
+| GET | `/api/bank-batches/{id}/export?format=csv\|txt` | 全部 | 下载报盘文件（`Content-Disposition: attachment`）。列：`房号,户名,账号,金额(元),账期,签约号` |
+| POST | `/api/bank-batches/{id}/return` | ADMIN/CASHIER | 回盘 `{fileName?, content}`（CSV 文本：`房号,金额,结果,说明`）。成功项自动登记收款并核销，失败项记原因。返回 `{success, failed, totalAmount}` |
+| POST | `/api/bank-batches/{id}/close` | ADMIN | 关闭批次 |
+
+### 4.5 催缴通知
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| GET | `/api/notice-templates` | 全部 | 模板列表 |
+| POST/PUT/DELETE | `/api/notice-templates[/{id}]` | ADMIN | 模板维护 |
+| GET | `/api/notices` | 全部 | 发送记录。过滤：`channel`、`status`、`roomId`、`from`、`to`、`keyword` |
+| POST | `/api/notices/send` | ADMIN/CASHIER | 发送 `{channel, templateId, billIds?, roomIds?, period?, dryRun?}`。`dryRun=true` 只返回渲染后的内容不发送。返回 `{sentCount, failedCount, notices[]}` |
+
+未配置短信/邮件通道时走内置模拟通道（`provider = 'mock'`，状态置 `SENT`），接入真实通道实现 `services/notice-channel.js` 即可。
+
+### 4.6 收据与发票
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| GET | `/api/receipts` | 全部 | 列表。过滤：`roomId`、`type`、`status`、`from`、`to`、`keyword` |
+| POST | `/api/receipts` | ADMIN/CASHIER | 开具 `{paymentId, type: 'RECEIPT'\|'INVOICE', title, taxNo?, amount?, remark?}`。开票金额不得超过该收款单金额，且一张收款单同类型只能开一次 |
+| POST | `/api/receipts/{id}/void` | ADMIN | 作废 `{reason}` |
+| GET | `/api/receipts/{id}/print` | 全部 | 返回可打印 HTML（`Content-Type: text/html; charset=utf-8`），前端新窗口打开即打印 |
+
+### 4.7 导入导出
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| POST | `/api/import/{type}` | ADMIN | 导入 `{fileName?, content}`，`type` ∈ `rooms`、`residents`、`arrears`、`advances`。逐行校验，返回 `{total, success, failed, errors:[{line, message}]}`，并写 `wye_import_log` |
+| GET | `/api/import-logs` | ADMIN | 导入记录 |
+| GET | `/api/export/{type}?{filters}` | 全部 | 导出 CSV（UTF-8 带 BOM）。`type` ∈ `rooms`、`residents`、`bills`、`arrears`、`payments`、`fund-flows` |
+
+CSV 列定义（首行表头，导入导出同名）：
+
+- `rooms`：`小区编码,楼栋,单元,房号,楼层,面积,房屋类型,使用状态`
+- `residents`：`小区编码,房号,姓名,电话,证件号,住户类型,入住日期`
+- `arrears`：`小区编码,房号,收费项目编码,账期,金额,应缴日`
+- `advances`：`小区编码,房号,类型,金额,备注`（类型取 `预收`/`押金`）
+- `bills`：`账单号,小区,楼栋,房号,收费项目,账期,计费方式,数量,单价,金额,减免,滞纳金,应收,已收,欠费,状态,应缴日`
+- `payments`：`收款单号,小区,房号,金额,方式,收款时间,操作人,已核销,预收,备注`
+
+枚举与中文的对应关系见 `docs/data-model.md`；导入时房屋类型/住户类型等既接受中文也接受英文枚举码。
+
+### 4.8 用户数据范围与审批
+
+| 方法 | 路径 | 角色 | 说明 |
+|---|---|---|---|
+| GET | `/api/users` | ADMIN | 用户列表（新增返回 `dataScope`、`communityIds`） |
+| POST/PUT | `/api/users[/{id}]` | ADMIN | 新增/修改，支持 `dataScope` 与 `communityIds: number[]` |
+| GET | `/api/approvals` | 全部 | 审批单列表。过滤：`status`、`type`、`roomId`、`keyword` |
+| POST | `/api/approvals` | ADMIN/CASHIER | 提交审批 `{type, billId?, roomId?, amount, payload?, reason}`。`type` ∈ `BILL_DISCOUNT`、`ADVANCE_REFUND`、`DEPOSIT_REFUND` |
+| POST | `/api/approvals/{id}/approve` | ADMIN | 通过 `{remark?}` → **自动执行**对应动作（改账单减免 / 扣减余额并退款） |
+| POST | `/api/approvals/{id}/reject` | ADMIN | 驳回 `{remark}` |
+
+账单调整接口 `/api/bills/{id}` 的 `discount` 逻辑新增校验：减免金额 ≥ 100 元时，必须携带已通过的审批单 `approvalNo`，否则提示「减免 100 元及以上需先审批」。
+
+### 4.9 业主端（免登录，移动 H5）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/portal/login` | `{roomNo, phoneSuffix}`（业主手机号后 4 位）→ `{token, room, ownerName}`，token 有效期 2 小时 |
+| GET | `/api/portal/bills` | 本房账单（`Authorization: Bearer <portal token>`） |
+| GET | `/api/portal/payments` | 本房缴费记录 |
+| GET | `/api/portal/summary` | 汇总：欠费合计、待缴账单数、预收余额 |
+| POST | `/api/portal/orders` | 创建在线支付单 `{billIds}` → `{orderNo, amount, payUrl}` |
+| POST | `/api/portal/orders/{orderNo}/pay` | 模拟支付成功回调 → 生成收款单（`method=ONLINE`、`channel=PORTAL`）并核销，返回核销明细 |
+
+门户 token 只能访问自己的房屋，越权访问其他房屋返回 403。

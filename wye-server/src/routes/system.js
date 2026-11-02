@@ -37,7 +37,10 @@ export async function registerSystemRoutes(app) {
       prisma.user.count({ where }),
       prisma.user.findMany({ where, orderBy: { id: 'asc' }, skip, take })
     ])
-    return ok(pageResult(rows.map(userVO), total, page, size))
+    const ranges = rows.length ? await prisma.userCommunity.findMany({ where: { userId: { in: rows.map((row) => row.id) } } }) : []
+    const rangeMap = new Map(rows.map((row) => [row.id, []]))
+    ranges.forEach((row) => rangeMap.get(row.userId)?.push(row.communityId))
+    return ok(pageResult(rows.map((row) => userVO({ ...row, communityIds: rangeMap.get(row.id) || [] })), total, page, size))
   })
 
   app.post('/api/users', { preHandler: [auth, admin] }, async (request) => {
@@ -48,6 +51,8 @@ export async function registerSystemRoutes(app) {
         realName: z.string().trim().min(1, '姓名不能为空').max(50),
         role: enumOf(ROLE, '角色不正确'),
         phone: z.string().trim().max(20).nullish(),
+        dataScope: z.enum(['ALL', 'COMMUNITY']).default('ALL'),
+        communityIds: z.array(z.coerce.number().int().positive()).default([]),
         remark: z.string().trim().max(255).nullish()
       }),
       request.body
@@ -62,9 +67,13 @@ export async function registerSystemRoutes(app) {
         realName: payload.realName,
         role: payload.role,
         phone: payload.phone || null,
+        dataScope: payload.dataScope,
         remark: payload.remark || null
       }
     })
+    if (payload.dataScope === 'COMMUNITY' && payload.communityIds.length) {
+      await prisma.userCommunity.createMany({ data: payload.communityIds.map((communityId) => ({ userId: created.id, communityId })), skipDuplicates: true })
+    }
     await recordLog(request, { module: '用户', action: '新增', target: created.username, detail: `角色 ${created.role}` })
     return ok(userVO(created))
   })
@@ -81,6 +90,8 @@ export async function registerSystemRoutes(app) {
         phone: z.string().trim().max(20).nullish(),
         enabled: z.coerce.boolean().default(true),
         password: z.string().nullish(),
+        dataScope: z.enum(['ALL', 'COMMUNITY']).default(exists.dataScope || 'ALL'),
+        communityIds: z.array(z.coerce.number().int().positive()).default([]),
         remark: z.string().trim().max(255).nullish()
       }),
       request.body
@@ -94,6 +105,7 @@ export async function registerSystemRoutes(app) {
       role: payload.role,
       phone: payload.phone || null,
       enabled: payload.enabled,
+      dataScope: payload.dataScope,
       remark: payload.remark || null
     }
     if (payload.password) {
@@ -102,6 +114,10 @@ export async function registerSystemRoutes(app) {
     }
 
     const updated = await prisma.user.update({ where: { id }, data })
+    await prisma.userCommunity.deleteMany({ where: { userId: id } })
+    if (payload.dataScope === 'COMMUNITY' && payload.communityIds.length) {
+      await prisma.userCommunity.createMany({ data: payload.communityIds.map((communityId) => ({ userId: id, communityId })), skipDuplicates: true })
+    }
     await recordLog(request, { module: '用户', action: '修改', target: updated.username, detail: `角色 ${updated.role}，状态 ${updated.enabled ? '启用' : '停用'}` })
     return ok(userVO(updated))
   })

@@ -58,7 +58,8 @@ export const DICT = {
     ALIPAY: { label: '支付宝', tag: 'primary' },
     BANK_TRANSFER: { label: '银行转账', tag: 'warning' },
     POS: { label: 'POS 刷卡', tag: 'info' },
-    BANK_DEDUCT: { label: '银行代扣', tag: 'danger' }
+    BANK_DEDUCT: { label: '银行代扣', tag: 'danger' },
+    ONLINE: { label: '在线支付', tag: 'success' }
   },
   // 账单状态
   billStatus: {
@@ -72,6 +73,89 @@ export const DICT = {
     ADMIN: { label: '管理员', tag: 'danger' },
     CASHIER: { label: '收费员', tag: 'warning' },
     VIEWER: { label: '只读', tag: 'info' }
+  },
+  // ===== 二期 =====
+  // 资金账户类型
+  accountType: {
+    ADVANCE: { label: '预收', tag: 'success' },
+    DEPOSIT: { label: '押金', tag: 'warning' }
+  },
+  // 资金流水方向
+  flowDirection: {
+    IN: { label: '转入', tag: 'success' },
+    OUT: { label: '转出', tag: 'danger' }
+  },
+  // 资金流水业务类型
+  fundBizType: {
+    PAYMENT_ADVANCE: { label: '收款转预收', tag: 'success' },
+    ADVANCE_USE: { label: '预收抵扣', tag: 'primary' },
+    DEPOSIT_IN: { label: '收取押金', tag: 'success' },
+    DEPOSIT_REFUND: { label: '退还押金', tag: 'danger' },
+    ADVANCE_REFUND: { label: '退还预收', tag: 'danger' },
+    IMPORT: { label: '历史导入', tag: 'info' }
+  },
+  // 银行签约状态
+  bankContractStatus: {
+    ACTIVE: { label: '正常', tag: 'success' },
+    CANCELLED: { label: '已解约', tag: 'info' }
+  },
+  // 代扣批次状态
+  bankBatchStatus: {
+    GENERATED: { label: '已生成', tag: 'primary' },
+    SENT: { label: '已报盘', tag: 'warning' },
+    RETURNED: { label: '已回盘', tag: 'success' },
+    CLOSED: { label: '已关闭', tag: 'info' }
+  },
+  // 回盘明细结果
+  batchItemResult: {
+    PENDING: { label: '待处理', tag: 'info' },
+    SUCCESS: { label: '成功', tag: 'success' },
+    FAIL: { label: '失败', tag: 'danger' }
+  },
+  // 通知通道
+  noticeChannel: {
+    SMS: { label: '短信', tag: 'primary' },
+    EMAIL: { label: '邮件', tag: 'success' }
+  },
+  // 通知状态
+  noticeStatus: {
+    PENDING: { label: '待发送', tag: 'warning' },
+    SENT: { label: '已发送', tag: 'success' },
+    FAILED: { label: '发送失败', tag: 'danger' }
+  },
+  // 票据类型
+  receiptType: {
+    RECEIPT: { label: '收据', tag: 'primary' },
+    INVOICE: { label: '发票', tag: 'warning' }
+  },
+  // 票据状态
+  receiptStatus: {
+    ISSUED: { label: '已开具', tag: 'success' },
+    VOID: { label: '已作废', tag: 'info' }
+  },
+  // 审批类型
+  approvalType: {
+    BILL_DISCOUNT: { label: '减免', tag: 'primary' },
+    ADVANCE_REFUND: { label: '预收退款', tag: 'warning' },
+    DEPOSIT_REFUND: { label: '押金退还', tag: 'warning' }
+  },
+  // 审批状态
+  approvalStatus: {
+    PENDING: { label: '待审批', tag: 'warning' },
+    APPROVED: { label: '已通过', tag: 'success' },
+    REJECTED: { label: '已驳回', tag: 'danger' }
+  },
+  // 数据范围
+  dataScope: {
+    ALL: { label: '全部', tag: 'primary' },
+    COMMUNITY: { label: '指定小区', tag: 'warning' }
+  },
+  // 数据导入类型
+  importType: {
+    rooms: { label: '房屋', tag: 'primary' },
+    residents: { label: '住户', tag: 'success' },
+    arrears: { label: '历史欠费', tag: 'warning' },
+    advances: { label: '历史预收押金', tag: 'info' }
   }
 }
 

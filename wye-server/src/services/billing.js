@@ -150,6 +150,55 @@ export async function generateBills({ period, communityId, buildingId, feeItemId
   return result
 }
 
+/** 按逾期天数计提滞纳金，反复执行会覆盖重算，不产生重复账单 */
+export async function calculateLateFees({ period, communityId, buildingId, feeItemIds }) {
+  if (!assertPeriod(period)) bad('账期格式不正确，应为 yyyy-MM')
+  const ids = Array.isArray(feeItemIds) ? feeItemIds.map(Number).filter((id) => !Number.isNaN(id)) : []
+  const rows = await prisma.bill.findMany({
+    where: {
+      period: String(period),
+      status: { not: 'VOID' },
+      ...(communityId ? { communityId: Number(communityId) } : {}),
+      ...(buildingId ? { room: { buildingId: Number(buildingId) } } : {}),
+      ...(ids.length ? { feeItemId: { in: ids } } : {})
+    },
+    include: { feeItem: true }
+  })
+  const today = new Date()
+  let updated = 0
+  let total = D(0)
+  let skipped = 0
+  await prisma.$transaction(async (tx) => {
+    for (const bill of rows) {
+      const rate = D(bill.feeItem?.lateFeeRate || 0)
+      if (rate.lte(0) || !bill.dueDate) {
+        skipped += 1
+        continue
+      }
+      const due = new Date(bill.dueDate)
+      due.setDate(due.getDate() + Number(bill.feeItem?.graceDays || 0))
+      const overdueDays = Math.floor((today.getTime() - due.getTime()) / 86400000)
+      if (overdueDays <= 0) {
+        skipped += 1
+        continue
+      }
+      const principal = D(bill.amount).minus(D(bill.discount)).minus(D(bill.paidAmount))
+      if (principal.lte(0)) {
+        if (!D(bill.lateFee || 0).isZero()) {
+          await tx.bill.update({ where: { id: bill.id }, data: { lateFee: D(0), lateFeeAt: today } })
+        }
+        skipped += 1
+        continue
+      }
+      const lateFee = principal.times(rate).times(overdueDays).toDecimalPlaces(2)
+      await tx.bill.update({ where: { id: bill.id }, data: { lateFee, lateFeeAt: today } })
+      updated += 1
+      total = total.plus(lateFee)
+    }
+  })
+  return { updated, skipped, totalLateFee: yuan(total) }
+}
+
 /** 调整账单：只允许改减免与应缴日，且净额不得低于已收 */
 export async function adjustBill(id, payload) {
   const bill = await prisma.bill.findUnique({ where: { id: Number(id) } })
@@ -160,7 +209,7 @@ export async function adjustBill(id, payload) {
   if (payload.discount !== undefined && payload.discount !== null) {
     const discount = D(payload.discount)
     if (discount.isNegative()) bad('减免金额不能为负数')
-    const net = D(bill.amount).minus(discount)
+    const net = D(bill.amount).minus(discount).plus(D(bill.lateFee || 0))
     if (net.lessThan(D(bill.paidAmount))) {
       bad(`减免后金额不能低于已收金额 ${yuan(bill.paidAmount)} 元`)
     }

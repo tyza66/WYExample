@@ -1,7 +1,9 @@
 <script setup>
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { useLedgerStore } from '@/stores/ledger'
 import { dictLabel, dictTag } from '@/utils/dict'
 import Breadcrumb from './Breadcrumb.vue'
 
@@ -12,6 +14,16 @@ const emit = defineEmits(['toggle'])
 
 const router = useRouter()
 const userStore = useUserStore()
+const ledgerStore = useLedgerStore()
+
+function handleLedgerChange(value) {
+  ledgerStore.setLedger(value)
+  ElMessage.success(`已切换账套：${ledgerStore.currentLabel}`)
+}
+
+onMounted(() => {
+  ledgerStore.loadOptions()
+})
 
 async function handleLogout() {
   try {
@@ -39,6 +51,17 @@ async function handleLogout() {
     </div>
 
     <div class="navbar-right">
+      <el-select
+        v-if="ledgerStore.options.length"
+        :model-value="ledgerStore.ledgerId"
+        class="navbar-ledger"
+        placeholder="全部账套"
+        size="small"
+        @change="handleLedgerChange"
+      >
+        <el-option label="全部账套" value="" />
+        <el-option v-for="item in ledgerStore.options" :key="item.id" :label="item.label" :value="String(item.id)" />
+      </el-select>
       <el-tag :type="dictTag('role', userStore.role)" size="small" effect="light">
         {{ dictLabel('role', userStore.role) }}
       </el-tag>
@@ -88,6 +111,10 @@ async function handleLogout() {
 .navbar-username {
   font-size: 14px;
   color: #303133;
+}
+
+.navbar-ledger {
+  width: 150px;
 }
 
 .navbar-avatar {
